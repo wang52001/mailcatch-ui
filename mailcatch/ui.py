@@ -48,6 +48,8 @@ PAGE = """<!doctype html>
   .row .k{width:64px;color:var(--muted);font-size:12px;flex:none}
   .row input{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:6px;
              font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:#fbfbfc;color:var(--text)}
+  .row select{flex:1;padding:9px 10px;border:1px solid var(--line);border-radius:6px;
+              font:13px/1.4 system-ui,-apple-system,sans-serif;background:#fbfbfc;color:var(--text)}
   button{background:var(--brand);color:#fff;border:0;border-radius:6px;padding:9px 16px;
          font-size:14px;cursor:pointer}
   button.ghost{background:#fff;color:var(--text);border:1px solid var(--line)}
@@ -70,6 +72,7 @@ PAGE = """<!doctype html>
 没有批量生成、没有任何验证码识别。批量场景不是它的用途。</div>
 
 <div class="card">
+  <div class="row"><span class="k">域名</span><select id="domain"></select></div>
   <div class="row"><span class="k">邮箱</span><input id="email" placeholder="点生成，或手动粘贴已有账号"><button class="sm ghost" onclick="cp('email')">复制</button></div>
   <div class="row"><span class="k">密码</span><input id="password" placeholder="点生成，或手动填已有密码"><button class="sm ghost" onclick="cp('password')">复制</button></div>
   <div class="row"><span class="k">姓名</span><input id="name" placeholder="选填"><button class="sm ghost" onclick="cp('name')">复制</button></div>
@@ -123,7 +126,9 @@ async function poll(addr, sec, round){
   $('#code').textContent = '——';
 }
 $('#gen').onclick = async () => {
-  const d = await fetch('/api/identity', {method:'POST'}).then(r=>r.json());
+  const d = await fetch('/api/identity', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({domain: $('#domain').value})}).then(r=>r.json());
   if(d.error){ alert(d.error); return; }
   $('#email').value = d.email; $('#password').value = d.password; $('#name').value = d.name;
   $('#code').textContent = '——'; $('#codelsg').textContent = '点「等验证码」后这里显示';
@@ -131,6 +136,19 @@ $('#gen').onclick = async () => {
   $('#state').textContent = '已生成，去注册吧';
   $('#savemsg').textContent = '注册成功后再点存入';
 };
+(async function loadDomains(){
+  const r = await fetch('/api/domains').then(r=>r.json()).catch(()=>({domains:[]}));
+  const sel = $('#domain');
+  if(!r.domains || !r.domains.length){
+    sel.innerHTML = '<option value="">（没配域名，见 config.json）</option>'; return;
+  }
+  sel.innerHTML = r.domains.map((d,i)=>`<option value="${d}">${d}</option>`).join('');
+  // 每个域名用一次再换下一个，测试多域名时省得手动点
+  sel.onchange = () => { localStorage.setItem('mc_domain', sel.value); };
+  const saved = localStorage.getItem('mc_domain');
+  if(saved && r.domains.includes(saved)) sel.value = saved;
+})();
+
 $('#wait').onclick = () => {
   const a = $('#email').value; if(!a) return;
   $('#wait').disabled = true; $('#code').textContent = '…';
@@ -240,13 +258,22 @@ _WAITERS: dict[str, dict[str, Any]] = {}
 _LOCK = threading.Lock()
 
 
-def _new_identity() -> dict[str, str]:
+def _new_identity(domain: str | None = None) -> dict[str, str]:
     cfg = cfgmod.load_config()
-    if not cfg.domain:
-        raise ValueError("mailcatch 配置里没有 domain，先在 config.json 填上你的 catch-all 域名")
+    domains = cfg.domains or ([cfg.domain] if cfg.domain else [])
+    if not domains:
+        raise ValueError(
+            "mailcatch 配置里没有 domain / domains，"
+            "先在 config.json 填上你的 catch-all 域名"
+        )
+    chosen = (domain or "").strip().lower().rstrip(".") or domains[0]
+    if chosen not in domains:
+        raise ValueError(
+            f"域名 {chosen!r} 不在配置里。可用：{', '.join(domains)}"
+        )
     first, last = random_name()
     return {
-        "email": random_address(cfg.domain, cfg.address_style, cfg.address_prefix),
+        "email": random_address(chosen, cfg.address_style, cfg.address_prefix),
         "password": generate_password(16),
         "name": f"{first} {last}",
     }
@@ -312,6 +339,16 @@ def build_handler():
             if u.path == "/healthz":
                 # 给平台健康检查用的：不带任何数据，也不需要登录
                 self._json(200, {"ok": True, "service": "mailcatch-ui"})
+                return
+
+            if u.path == "/api/domains":
+                try:
+                    cfg = cfgmod.load_config()
+                    domains = cfg.domains or ([cfg.domain] if cfg.domain else [])
+                except Exception as e:
+                    self._json(400, {"error": f"{type(e).__name__}: {e}"})
+                    return
+                self._json(200, {"domains": domains, "count": len(domains)})
                 return
 
             if u.path == "/api/selftest":
@@ -419,8 +456,15 @@ def build_handler():
 
         def _post(self) -> None:
             if self.path.startswith("/api/identity"):
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
                 try:
-                    ident = _new_identity()
+                    domain = json.loads(raw or b"{}").get("domain") or None
+                except json.JSONDecodeError:
+                    self._json(400, {"error": "body 不是合法 JSON"})
+                    return
+                try:
+                    ident = _new_identity(domain)
                 except Exception as e:
                     self._json(400, {"error": f"{type(e).__name__}: {e}"})
                     return

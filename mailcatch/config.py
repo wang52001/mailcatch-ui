@@ -102,9 +102,31 @@ class ImapConfig:
         )
 
 
+def merge_domains(raw: Any, fallback: str = "") -> list[str]:
+    """把 domains 字段整理成去重保序的小写域名列表。
+
+    接受三种写法：列表 ["a.com","b.com"]、逗号分隔字符串 "a.com,b.com"、单个字符串 "a.com"。
+    domain 字段兜底塞在最前面，保证老配置（只写 domain）行为不变。
+    """
+    items: list[str] = []
+    if raw:
+        if isinstance(raw, str):
+            items = raw.split(",")
+        elif isinstance(raw, (list, tuple)):
+            items = [str(x) for x in raw]
+    out: list[str] = []
+    for cand in ([fallback] if fallback else []) + items:
+        d = str(cand).strip().lower().rstrip(".")
+        if d and d not in out:
+            out.append(d)
+    return out
+
+
 @dataclass
 class Config:
     domain: str = ""
+    # 可选：多个自有域名（都配好 catch-all 之后就能在这儿挑着用）
+    domains: list[str] = field(default_factory=list)
     imap: ImapConfig = field(default_factory=lambda: ImapConfig(host=""))
     # 本地地址生成
     address_style: str = "word"      # word | name | uuid | subaddr
@@ -158,6 +180,7 @@ class Config:
             imap = ImapConfig(host=raw_imap.get("host", "") or "local")
         cfg = cls(
             domain=d.get("domain", ""),
+            domains=merge_domains(d.get("domains"), d.get("domain", "")),
             imap=imap,
             address_style=style,
             address_prefix=d.get("address_prefix", ""),

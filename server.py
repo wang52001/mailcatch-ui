@@ -89,10 +89,23 @@ def prepare_config() -> None:
         cfg = json.loads(raw)
     except json.JSONDecodeError as e:
         raise SystemExit(f"MAILCATCH_CONFIG_JSON 不是合法 JSON：{e}")
+
+    # MAILCATCH_DOMAINS 是增量开关：加域名时只改这一个变量就行，不用动整份配置。
+    # 逗号分隔，比如 "a.jdhsf.top,b.jdhsf.top"；也会跟配置里已有的 domains / domain 合并去重。
+    extra = os.environ.get("MAILCATCH_DOMAINS", "")
+    if extra.strip():
+        cfg["domains"] = [
+            d for d in
+            (cfg.get("domains") or [cfg.get("domain", "")])
+            + [x.strip() for x in extra.split(",")]
+            if d
+        ]
+
     tmp = Path(tempfile.gettempdir()) / "mailcatch-config.json"
     tmp.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     os.environ["MAILCATCH_CONFIG"] = str(tmp)
-    print(f"[boot] 已加载邮件配置（domain={cfg.get('domain')}）", flush=True)
+    shown = list(dict.fromkeys(cfg.get("domains") or [cfg.get("domain", "")]))
+    print(f"[boot] 已加载邮件配置（域名 {len(shown)} 个：{', '.join(shown)}）", flush=True)
 
 
 def build_authed_handler():
