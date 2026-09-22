@@ -6,8 +6,12 @@
  * 直接在 DNS 里 CNAME 到 onrender.com 也不行 —— Render 收到不认识的 Host 会返回 404。
  * 所以让 Worker 在边缘把 Host 改掉再转发。
  *
+ * 附带一个保活定时器：Render 免费实例 15 分钟没流量就休眠，下次访问要等 30~60 秒冷启动。
+ * 加了 scheduled 之后 Cloudflare 每 10 分钟替你戳一下，实例一直醒着。
+ *
  * 用法：Cloudflare 后台 → Workers 和 Pages → 创建 → 创建 Worker → 粘贴本文件 → 部署
- *      → 设置 → 触发器 → 路由 → 添加 mail.jdhsf.top/*
+ *      1）设置 → 触发器 → 路由 → 添加 mail.jdhsf.top/*
+ *      2）设置 → 触发器 → Cron 触发器 → 添加 */10 * * * *     ← 保活开关，别漏
  */
 
 const UPSTREAM = "mailcatch-ui.onrender.com";
@@ -57,5 +61,14 @@ export default {
       statusText: resp.statusText,
       headers: out,
     });
+  },
+
+  // 每 10 分钟由 Cron 触发一次：戳一下健康检查，让 Render 实例不睡
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      fetch(`https://${UPSTREAM}/healthz`, {
+        headers: { "User-Agent": "keepalive-cron" },
+      }).then(r => console.log("keepalive:", r.status))
+    );
   },
 };
