@@ -282,13 +282,55 @@ def build_handler():
             self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                        "application/json")
 
+        def _safe(self, fn) -> None:
+            """兜底：未捕获异常会让连接直接关闭，反向代理只看到 502，线上没法排查。"""
+            try:
+                fn()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+            except Exception:
+                import traceback
+                tb = traceback.format_exc()
+                print("[error] " + tb, flush=True)
+                try:
+                    self._json(500, {"error": "服务器内部错误", "trace": tb.splitlines()[-1]})
+                except Exception:
+                    pass
+
         def do_GET(self) -> None:
+            self._safe(self._get)
+
+        def _get(self) -> None:
             u = urllib.parse.urlparse(self.path)
             q = urllib.parse.parse_qs(u.query)
 
             if u.path == "/healthz":
                 # 给平台健康检查用的：不带任何数据，也不需要登录
                 self._json(200, {"ok": True, "service": "mailcatch-ui"})
+                return
+
+            if u.path == "/api/selftest":
+                # 线上排障用：配置到底加载成功没有
+                import os
+                import sys
+                info: dict[str, Any] = {
+                    "python": sys.version.split()[0],
+                    "cwd": os.getcwd(),
+                    "has_config_json_env": bool(os.environ.get("MAILCATCH_CONFIG_JSON")),
+                }
+                p = os.environ.get("MAILCATCH_CONFIG")
+                info["config_path"] = p or ""
+                info["config_file_exists"] = bool(p) and Path(p).is_file()
+                try:
+                    cfg = cfgmod.load_config()
+                    info["config_ok"] = True
+                    info["domain"] = cfg.domain
+                    info["imap_host"] = cfg.imap.host
+                    info["imap_user_set"] = bool(cfg.imap.user)
+                except Exception as e:
+                    info["config_ok"] = False
+                    info["config_error"] = f"{type(e).__name__}: {e}"
+                self._json(200, info)
                 return
 
             if u.path == "/":
@@ -368,11 +410,14 @@ def build_handler():
             self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:
+            self._safe(self._post)
+
+        def _post(self) -> None:
             if self.path.startswith("/api/identity"):
                 try:
                     ident = _new_identity()
-                except ValueError as e:
-                    self._json(400, {"error": str(e)})
+                except Exception as e:
+                    self._json(400, {"error": f"{type(e).__name__}: {e}"})
                     return
                 self._json(200, ident)
                 return
@@ -405,6 +450,9 @@ def build_handler():
             self._json(404, {"error": "not found"})
 
         def do_DELETE(self) -> None:
+            self._safe(self._delete)
+
+        def _delete(self) -> None:
             if self.path.startswith("/api/pool/"):
                 pid = self.path.rsplit("/", 1)[-1]
                 if not pid.isdigit():
