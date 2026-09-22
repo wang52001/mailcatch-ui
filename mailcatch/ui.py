@@ -102,6 +102,7 @@ PAGE = """<!doctype html>
     <tbody id="rows"></tbody>
   </table>
   <div class="hint">密码是明文存的 —— 这个文件别同步到网盘，别进 git。</div>
+  <div class="hint">托管版（Render 免费实例）重启或休眠唤醒后本地文件会重置，<b>存完记得导出 CSV</b>。</div>
 </div>
 </div>
 <script>
