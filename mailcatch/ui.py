@@ -108,14 +108,18 @@ PAGE = """<!doctype html>
 <script>
 const $ = s => document.querySelector(s);
 function cp(id){ const el=$('#'+id); el.select(); document.execCommand('copy'); }
-async function poll(addr, sec){
+async function poll(addr, sec, round){
+  round = round || 1;
+  // 单轮最多 90 秒：托管在 Cloudflare Worker 后面时，平台会在 ~100 秒切断请求
   const r = await fetch('/api/wait?address='+encodeURIComponent(addr)+'&timeout='+sec)
              .then(r=>r.json());
   if(r.code){ $('#code').textContent = r.code;
               $('#codelsg').textContent = '来自：' + (r.subject || '(无主题)');
               $('#wait').disabled = false; $('#state').textContent = '已收到'; return; }
+  if(round < 3){ $('#state').textContent = `第 ${round} 轮没等到，再等一轮（第 ${round+1}/3 轮）…`;
+                 return poll(addr, sec, round + 1); }
   $('#wait').disabled = false;
-  $('#state').textContent = '超时未收到，可以再等一次';
+  $('#state').textContent = '三轮都没等到，去邮箱看看是不是被拦了';
   $('#code').textContent = '——';
 }
 $('#gen').onclick = async () => {
@@ -131,7 +135,7 @@ $('#wait').onclick = () => {
   const a = $('#email').value; if(!a) return;
   $('#wait').disabled = true; $('#code').textContent = '…';
   $('#state').textContent = '正在轮询邮箱…';
-  poll(a, 180);
+  poll(a, 90);
 };
 
 // ---- 账号池 ----
@@ -341,7 +345,7 @@ def build_handler():
             if u.path == "/api/wait":
                 # 这里会阻塞到超时或收到为止（页面那边已经在转圈了）
                 address = (q.get("address") or [""])[0]
-                timeout = int((q.get("timeout") or ["180"])[0])
+                timeout = int((q.get("timeout") or ["90"])[0])
                 if not address:
                     self._json(400, {"error": "缺 address"})
                     return
