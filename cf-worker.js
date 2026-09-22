@@ -8,10 +8,11 @@
  *
  * 附带一个保活定时器：Render 免费实例 15 分钟没流量就休眠，下次访问要等 30~60 秒冷启动。
  * 加了 scheduled 之后 Cloudflare 每 10 分钟替你戳一下，实例一直醒着。
+ * Cron 表达式：0,10,20,30,40,50 接五个星号（即每 10 分钟一次）。
  *
  * 用法：Cloudflare 后台 → Workers 和 Pages → 创建 → 创建 Worker → 粘贴本文件 → 部署
  *      1）设置 → 触发器 → 路由 → 添加 mail.jdhsf.top/*
- *      2）设置 → 触发器 → Cron 触发器 → 添加 */10 * * * *     ← 保活开关，别漏
+ *      2）设置 → 触发器 → Cron 触发器 → 添加 0,10,20,30,40,50 星号星号星号星号星号  ← 保活开关，别漏
  */
 
 const UPSTREAM = "mailcatch-ui.onrender.com";
