@@ -1,0 +1,40 @@
+;; 在 Cloudflare DNS 批量导入：jdhsf.top 的新邮箱子域
+;;
+;; 用法：Cloudflare 后台 → 左侧 DNS → Records → 右上角「导入 DNS 记录」
+;;      → 选本文件 → 勾选当前指定的域 jdhsf.top → 导入
+;;
+;; 说明：
+;;   - 导入是「追加」，不会删除或改动你现有的任何记录
+;;   - 根域 jdhsf.top 的 MX（AWS SES）、new-api 的解析记录都不受影响
+;;   - TTL 写 1 表示跟随 Cloudflare 自动 TTL
+;;
+;; 这套配置是从已验证能正常收信的 mc.jdhsf.top 原样复制来的：
+;;   MX  → Cloudflare Email Routing 的三条（优先级 5 / 15 / 22）
+;;   TXT → SPF，防止目标站点发验证码时被判定为伪造地址而退信
+;;
+;; 如果 zone 的 catch-all 规则已开启（mc 能收信说明已开启），
+;; 那这几个子域加完 MX 之后就自动继承了 catch-all，不用再单独配转发规则。
+
+;; ── lab.jdhsf.top ─────────────────────────────────
+lab.jdhsf.top.	1	IN	MX	5	route1.mx.cloudflare.net.
+lab.jdhsf.top.	1	IN	MX	15	route2.mx.cloudflare.net.
+lab.jdhsf.top.	1	IN	MX	22	route3.mx.cloudflare.net.
+lab.jdhsf.top.	1	IN	TXT	"v=spf1 include:_spf.mx.cloudflare.net ~all"
+
+;; ── test.jdhsf.top ────────────────────────────────
+test.jdhsf.top.	1	IN	MX	5	route1.mx.cloudflare.net.
+test.jdhsf.top.	1	IN	MX	15	route2.mx.cloudflare.net.
+test.jdhsf.top.	1	IN	MX	22	route3.mx.cloudflare.net.
+test.jdhsf.top.	1	IN	TXT	"v=spf1 include:_spf.mx.cloudflare.net ~all"
+
+;; ── dev.jdhsf.top ─────────────────────────────────
+dev.jdhsf.top.	1	IN	MX	5	route1.mx.cloudflare.net.
+dev.jdhsf.top.	1	IN	MX	15	route2.mx.cloudflare.net.
+dev.jdhsf.top.	1	IN	MX	22	route3.mx.cloudflare.net.
+dev.jdhsf.top.	1	IN	TXT	"v=spf1 include:_spf.mx.cloudflare.net ~all"
+
+;; ── box.jdhsf.top ─────────────────────────────────
+box.jdhsf.top.	1	IN	MX	5	route1.mx.cloudflare.net.
+box.jdhsf.top.	1	IN	MX	15	route2.mx.cloudflare.net.
+box.jdhsf.top.	1	IN	MX	22	route3.mx.cloudflare.net.
+box.jdhsf.top.	1	IN	TXT	"v=spf1 include:_spf.mx.cloudflare.net ~all"
