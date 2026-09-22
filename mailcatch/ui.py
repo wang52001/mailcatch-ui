@@ -286,6 +286,11 @@ def build_handler():
             u = urllib.parse.urlparse(self.path)
             q = urllib.parse.parse_qs(u.query)
 
+            if u.path == "/healthz":
+                # 给平台健康检查用的：不带任何数据，也不需要登录
+                self._json(200, {"ok": True, "service": "mailcatch-ui"})
+                return
+
             if u.path == "/":
                 self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
                 return

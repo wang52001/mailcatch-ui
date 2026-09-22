@@ -85,6 +85,10 @@ def build_authed_handler():
             self._gate(super().do_DELETE)
 
         def _gate(self, fn):
+            # 健康检查不带口令，否则平台探测不到存活就把进程判死
+            if self.path.split("?")[0].startswith("/healthz"):
+                fn()
+                return
             if not self._auth_ok():
                 self._challenge()
                 return
